@@ -12,7 +12,7 @@ spec:
             - name: APP_ENV
               value: prod
             - name: APP_VERSION
-              value: bootstrap
+              value: f3519f4-20260513173912
             - name: MESSAGE
               value: "Production stage: GitOps victory unlocked!"
           resources:
