@@ -167,6 +167,17 @@ After the pipeline pushes to Git, Argo CD should sync the dev app automatically.
 oc get route lifecycle-quest -n gitops-demo-dev
 ```
 
+### First-run image pull note
+
+The initial dev overlay starts with `newTag: bootstrap`. The development
+pipeline pushes both the immutable image tag and a temporary `bootstrap` alias,
+then commits the immutable tag back to the dev overlay. If a pod is created
+before the first build finishes, it may briefly show `ImagePullBackOff` until
+the pipeline has pushed the first image and Argo CD has synced the updated tag.
+
+Troubleshooting commands are in `bootstrap/troubleshoot-imagepullbackoff.md`.
+
+
 ---
 
 ## 5. Promote dev to test
