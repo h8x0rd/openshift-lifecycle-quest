@@ -1,0 +1,44 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: git-clone-simple
+  namespace: gitops-demo-cicd
+spec:
+  description: Clone a Git repository into a workspace.
+  params:
+    - name: git-url
+      type: string
+    - name: git-revision
+      type: string
+      default: main
+  workspaces:
+    - name: output
+  steps:
+    - name: clone
+      image: alpine/git:2.45.2
+      workingDir: $(workspaces.output.path)
+      env:
+        - name: GIT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: git-credentials
+              key: username
+              optional: true
+        - name: GIT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: git-credentials
+              key: token
+              optional: true
+      script: |
+        #!/usr/bin/env sh
+        set -eu
+        find "$(workspaces.output.path)" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+        CLONE_URL="$(params.git-url)"
+        if [ -n "${GIT_USERNAME:-}" ] && [ -n "${GIT_TOKEN:-}" ] && echo "${CLONE_URL}" | grep -q '^https://'; then
+          CLONE_URL=$(echo "${CLONE_URL}" | sed "s#^https://#https://${GIT_USERNAME}:${GIT_TOKEN}@#")
+        fi
+
+        git clone --branch "$(params.git-revision)" "${CLONE_URL}" "$(workspaces.output.path)"
+        git rev-parse HEAD

@@ -1,0 +1,75 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: promote-gitops-image
+  namespace: gitops-demo-cicd
+spec:
+  description: Copy image repository and tag from one environment overlay to another.
+  params:
+    - name: git-url
+      type: string
+    - name: git-revision
+      type: string
+      default: main
+    - name: source-environment
+      type: string
+    - name: target-environment
+      type: string
+  workspaces:
+    - name: source
+  steps:
+    - name: promote-and-push
+      image: alpine/git:2.45.2
+      workingDir: $(workspaces.source.path)
+      env:
+        - name: GIT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: git-credentials
+              key: username
+        - name: GIT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: git-credentials
+              key: token
+      script: |
+        #!/usr/bin/env sh
+        set -eu
+
+        git config user.name "OpenShift Pipeline Bot"
+        git config user.email "pipeline-bot@example.com"
+
+        if echo "$(params.git-url)" | grep -q '^https://'; then
+          AUTH_REMOTE=$(echo "$(params.git-url)" | sed "s#^https://#https://${GIT_USERNAME}:${GIT_TOKEN}@#")
+          git remote set-url origin "${AUTH_REMOTE}"
+        fi
+
+        SRC="config/apps/overlays/$(params.source-environment)/kustomization.yaml"
+        DST="config/apps/overlays/$(params.target-environment)/kustomization.yaml"
+        SRC_PATCH="config/apps/overlays/$(params.source-environment)/patch-env.yaml"
+        DST_PATCH="config/apps/overlays/$(params.target-environment)/patch-env.yaml"
+
+        IMAGE_REPOSITORY=$(awk '/newName:/ {print $2}' "${SRC}")
+        IMAGE_TAG=$(awk '/newTag:/ {print $2}' "${SRC}")
+
+        if [ -z "${IMAGE_REPOSITORY}" ] || [ -z "${IMAGE_TAG}" ]; then
+          echo "Could not read image repository/tag from ${SRC}"
+          exit 1
+        fi
+
+        sed -i -E "s#newName: .*#newName: ${IMAGE_REPOSITORY}#" "${DST}"
+        sed -i -E "s#newTag: .*#newTag: ${IMAGE_TAG}#" "${DST}"
+        awk -v tag="${IMAGE_TAG}" '
+          /name: APP_VERSION/ { print; getline; sub(/value: .*/, "value: " tag); print; next }
+          { print }
+        ' "${DST_PATCH}" > "${DST_PATCH}.tmp"
+        mv "${DST_PATCH}.tmp" "${DST_PATCH}"
+
+        git add "${DST}" "${DST_PATCH}"
+        if git diff --cached --quiet; then
+          echo "No promotion change required."
+          exit 0
+        fi
+
+        git commit -m "chore(gitops): promote ${IMAGE_TAG} to $(params.target-environment)"
+        git push origin "HEAD:$(params.git-revision)"
