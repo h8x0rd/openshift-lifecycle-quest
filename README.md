@@ -259,3 +259,28 @@ For a real implementation, add:
 - Argo CD Projects with tighter source/destination restrictions.
 - Manual approval or change-management integration before production promotion.
 - Progressive delivery using OpenShift Service Mesh, Argo Rollouts, or weighted Routes.
+
+## Troubleshooting: Argo CD cannot create Services, Deployments, or Routes
+
+If an application reports an error similar to:
+
+```text
+services is forbidden: User "system:serviceaccount:openshift-gitops:openshift-gitops-argocd-application-controller" cannot create resource "services"
+```
+
+then the default Argo CD instance does not yet have Kubernetes RBAC in the target namespace. Label the managed namespaces so the OpenShift GitOps Operator creates the required role bindings:
+
+```bash
+./bootstrap/label-managed-namespaces.sh
+```
+
+Equivalent manual commands:
+
+```bash
+oc label namespace gitops-demo-cicd argocd.argoproj.io/managed-by=openshift-gitops --overwrite
+oc label namespace gitops-demo-dev  argocd.argoproj.io/managed-by=openshift-gitops --overwrite
+oc label namespace gitops-demo-test argocd.argoproj.io/managed-by=openshift-gitops --overwrite
+oc label namespace gitops-demo-prod argocd.argoproj.io/managed-by=openshift-gitops --overwrite
+```
+
+After the labels are set, refresh/sync the Argo CD applications. The namespace labels are also declared in `config/platform/base/namespaces.yaml` so Git remains the source of truth.
